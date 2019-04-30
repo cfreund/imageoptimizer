@@ -54,6 +54,12 @@ class OptimizeImageService
      */
     public function process($file, $extension = null, $fileIsUploaded = false, $testMode = false)
     {
+        //if we are not in test-mode, then handle processed files only, not the original ones
+        if (strpos($file, '_processed_') === false && $testMode === false)
+        {
+            return;
+        }
+
         $this->reset();
 
         if ($extension === null) {
@@ -72,18 +78,17 @@ class OptimizeImageService
             return;
         }
 
-        $binaryName = $this->configuration[$extension . 'Binary'];
-        $binary = CommandUtility::getCommand(escapeshellcmd($binaryName));
+        $binary = CommandUtility::getCommand(escapeshellcmd($this->configuration[$extension . 'Binary']));
 
         if (!is_string($binary)) {
             if (!$testMode) {
                 $this->logger->error(self::BINARY_NOT_FOUND, [
                     'file' => $file,
                     'fileExtension' => $extension,
-                    'binary' => $binaryName
+                    'binary' => $this->configuration[$extension . 'Binary']
                 ]);
             }
-            throw new BinaryNotFoundException('Binary ' . $binaryName . ' not found', 1488631746);
+            throw new BinaryNotFoundException('Binary ' . $binary . ' not found', 1488631746);
         }
 
         $parameters = $this->configuration[$extension . 'ParametersOn' . $when];
@@ -91,9 +96,14 @@ class OptimizeImageService
         $parameters = preg_replace('/%s/', $file, $parameters);
 
         $this->command = $binary . ' ' . $parameters . ' 2>&1';
+        if ($extension == 'png')
+        {
+            $this->command = str_replace('--ext=png', '--ext=.png', $this->command);
+        }
         $returnValue = 0;
         CommandUtility::exec($this->command, $this->output, $returnValue);
         $executionWasSuccessful = $returnValue == 0;
+
         if (!$testMode) {
             $this->logger->log(
                 $executionWasSuccessful ? LogLevel::INFO : LogLevel::ERROR,
